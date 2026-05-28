@@ -3,6 +3,7 @@
 .dockerignore
 environment/
 reports/
+data/
 *.env
 *.kdbx
 *.ovpn
@@ -12,5 +13,7 @@ reports/
 *.p12
 *.pfx
 *.pgpass
+__pycache__/
+*.py[cod]
 *.log
 *.tmp

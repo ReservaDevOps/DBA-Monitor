@@ -1,6 +1,8 @@
 environment/
 reports/*
 !reports/.gitkeep
+data/*
+!data/.gitkeep
 .env
 *.env
 *.kdbx
@@ -11,5 +13,7 @@ reports/*
 *.p12
 *.pfx
 *.pgpass
+__pycache__/
+*.py[cod]
 *.log
 *.tmp

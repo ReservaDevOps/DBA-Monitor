@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Daily PostgreSQL Report</title>
+    <style>
+      body {
+        color: #1f2933;
+        font-family: Arial, sans-serif;
+        line-height: 1.4;
+        margin: 32px;
+      }
+
+      h1,
+      h2 {
+        color: #102a43;
+      }
+
+      table {
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-bottom: 24px;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border: 1px solid #d9e2ec;
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #f0f4f8;
+      }
+
+      .summary {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        margin-bottom: 28px;
+      }
+
+      .metric {
+        border: 1px solid #d9e2ec;
+        padding: 10px;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Daily PostgreSQL Report</h1>
+    <p>Report: {{ report.report_name }} | Collected at: {{ report.collected_at }}</p>
+
+    <section class="summary">
+      {% for key, value in report.summary.items() %}
+      <div class="metric">
+        <strong>{{ key.replace("_", " ") }}</strong>
+        <span>{{ value }}</span>
+      </div>
+      {% endfor %}
+    </section>
+
+    {% for dataset_name, rows in report.datasets.items() %}
+    <h2>{{ dataset_name.replace("_", " ").title() }}</h2>
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          {% for column in rows[0].keys() %}
+          <th>{{ column }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows[:50] %}
+        <tr>
+          {% for value in row.values() %}
+          <td>{{ value }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>No rows returned.</p>
+    {% endif %}
+    {% endfor %}
+  </body>
+</html>
+

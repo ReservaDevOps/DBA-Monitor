@@ -7,6 +7,8 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
+    ports:
+      - "18081:8080"
     volumes:
       - ./environment/vpn/client-a:/vpn:ro
     restart: unless-stopped
@@ -16,10 +18,10 @@ services:
       timeout: 3s
       retries: 12
 
-  monitor-client-a:
+  agent-client-a:
     build:
       context: .
-      dockerfile: docker/monitor/Dockerfile
+      dockerfile: docker/agent/Dockerfile
     network_mode: "service:vpn-client-a"
     depends_on:
       vpn-client-a:
@@ -27,10 +29,18 @@ services:
     env_file:
       - ./environment/db/client-a.env
     volumes:
-      - ./queries:/queries:ro
+      - ./data/client-a:/data
       - ./reports:/reports
-      - ./scripts:/scripts:ro
-    working_dir: /work
-    command: ["bash", "/scripts/run-sample-report.sh"]
-    profiles:
-      - report
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      STATUS_INTERVAL_SECONDS: 300
+      DAILY_REPORT_HOUR: 2
+      DAILY_REPORT_MINUTE: 0
+      RUN_STATUS_ON_STARTUP: "true"
+      REPORT_NAME: client-a
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
