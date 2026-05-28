@@ -69,6 +69,18 @@ O relatório diário gera:
 - `summary.html`;
 - `summary.pdf`.
 
+Datasets incluídos:
+
+- identificação da instância;
+- tamanhos de databases;
+- maiores tabelas;
+- conexões por usuário/aplicação/estado;
+- queries em execução há mais de 5 minutos;
+- locks;
+- saúde de vacuum/analyze;
+- top SQLs por tempo total, tempo médio e I/O quando `pg_stat_statements`
+  estiver habilitado no database monitorado.
+
 Endpoints principais:
 
 ```text

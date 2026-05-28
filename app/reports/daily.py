@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.db import connection_info, fetch_all
+from app.db import connection_info, fetch_all, fetch_one
 from app.reports.renderer import render_html, render_pdf
 from app.settings import settings
 from app.storage.filesystem import report_root
@@ -106,6 +106,66 @@ DATASET_QUERIES = {
 }
 
 
+PG_STAT_STATEMENTS_QUERIES = {
+    "top_sql_by_total_time": """
+        select
+          queryid::text as queryid,
+          calls,
+          round(total_exec_time::numeric, 2) as total_exec_time_ms,
+          round(mean_exec_time::numeric, 2) as mean_exec_time_ms,
+          round(max_exec_time::numeric, 2) as max_exec_time_ms,
+          rows,
+          round((rows::numeric / nullif(calls, 0)), 2) as rows_per_call,
+          shared_blks_hit,
+          shared_blks_read,
+          temp_blks_read,
+          temp_blks_written,
+          left(regexp_replace(query, '\\s+', ' ', 'g'), 1000) as query
+        from pg_stat_statements
+        order by total_exec_time desc
+        limit 10
+    """,
+    "top_sql_by_mean_time": """
+        select
+          queryid::text as queryid,
+          calls,
+          round(total_exec_time::numeric, 2) as total_exec_time_ms,
+          round(mean_exec_time::numeric, 2) as mean_exec_time_ms,
+          round(max_exec_time::numeric, 2) as max_exec_time_ms,
+          rows,
+          round((rows::numeric / nullif(calls, 0)), 2) as rows_per_call,
+          shared_blks_hit,
+          shared_blks_read,
+          temp_blks_read,
+          temp_blks_written,
+          left(regexp_replace(query, '\\s+', ' ', 'g'), 1000) as query
+        from pg_stat_statements
+        where calls >= 5
+        order by mean_exec_time desc
+        limit 10
+    """,
+    "top_sql_by_io": """
+        select
+          queryid::text as queryid,
+          calls,
+          round(total_exec_time::numeric, 2) as total_exec_time_ms,
+          round(mean_exec_time::numeric, 2) as mean_exec_time_ms,
+          rows,
+          shared_blks_hit,
+          shared_blks_read,
+          shared_blks_dirtied,
+          shared_blks_written,
+          temp_blks_read,
+          temp_blks_written,
+          (shared_blks_read + temp_blks_read) as read_blocks,
+          left(regexp_replace(query, '\\s+', ' ', 'g'), 1000) as query
+        from pg_stat_statements
+        order by (shared_blks_read + temp_blks_read) desc, total_exec_time desc
+        limit 10
+    """,
+}
+
+
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as file:
@@ -115,6 +175,43 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _pg_stat_statements_available() -> bool:
+    row = fetch_one(
+        """
+        select exists (
+          select 1
+          from pg_extension
+          where extname = 'pg_stat_statements'
+        ) as available
+        """
+    )
+    return bool(row and row.get("available"))
+
+
+def _collect_pg_stat_statements() -> dict[str, list[dict[str, Any]]]:
+    if not _pg_stat_statements_available():
+        return {
+            "pg_stat_statements_status": [
+                {
+                    "available": False,
+                    "reason": "pg_stat_statements extension is not enabled in the current database",
+                }
+            ]
+        }
+
+    datasets = {
+        "pg_stat_statements_status": [
+            {
+                "available": True,
+                "reason": "pg_stat_statements extension is enabled",
+            }
+        ]
+    }
+    for name, sql in PG_STAT_STATEMENTS_QUERIES.items():
+        datasets[name] = fetch_all(sql)
+    return datasets
 
 
 def generate_daily_report(report_name: str | None = None) -> dict:
@@ -128,6 +225,12 @@ def generate_daily_report(report_name: str | None = None) -> dict:
     csv_files: dict[str, str] = {}
     for name, sql in DATASET_QUERIES.items():
         rows = fetch_all(sql)
+        datasets[name] = rows
+        csv_path = output_dir / f"{name}.csv"
+        _write_csv(csv_path, rows)
+        csv_files[name] = str(csv_path)
+
+    for name, rows in _collect_pg_stat_statements().items():
         datasets[name] = rows
         csv_path = output_dir / f"{name}.csv"
         _write_csv(csv_path, rows)
@@ -154,6 +257,12 @@ def generate_daily_report(report_name: str | None = None) -> dict:
         "largest_database_size": datasets["database_sizes"][0].get("pretty_size", "")
         if datasets["database_sizes"]
         else "",
+        "pg_stat_statements": "enabled"
+        if datasets["pg_stat_statements_status"][0].get("available")
+        else "disabled",
+        "top_sql_by_total_time": len(datasets.get("top_sql_by_total_time", [])),
+        "top_sql_by_mean_time": len(datasets.get("top_sql_by_mean_time", [])),
+        "top_sql_by_io": len(datasets.get("top_sql_by_io", [])),
     }
 
     report = {
