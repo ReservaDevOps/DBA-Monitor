@@ -1,0 +1,36 @@
+services:
+  vpn-client-a:
+    build:
+      context: .
+      dockerfile: docker/vpn/Dockerfile
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./environment/vpn/client-a:/vpn:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ip link show tun0 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  monitor-client-a:
+    build:
+      context: .
+      dockerfile: docker/monitor/Dockerfile
+    network_mode: "service:vpn-client-a"
+    depends_on:
+      vpn-client-a:
+        condition: service_healthy
+    env_file:
+      - ./environment/db/client-a.env
+    volumes:
+      - ./queries:/queries:ro
+      - ./reports:/reports
+      - ./scripts:/scripts:ro
+    working_dir: /work
+    command: ["bash", "/scripts/run-sample-report.sh"]
+    profiles:
+      - report

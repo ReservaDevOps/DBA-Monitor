@@ -1,0 +1,15 @@
+environment/
+reports/*
+!reports/.gitkeep
+.env
+*.env
+*.kdbx
+*.ovpn
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
+*.pgpass
+*.log
+*.tmp
