@@ -66,8 +66,8 @@ O agente roda dois jobs internos:
 O relatório diário gera:
 
 - CSVs por dataset;
-- `summary.html`;
-- `summary.pdf`.
+- `summary.html` em português;
+- `summary.pdf` em português, em paisagem.
 
 Datasets incluídos:
 

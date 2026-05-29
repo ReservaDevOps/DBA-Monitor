@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="utf-8">
-    <title>Daily PostgreSQL Report</title>
+    <title>Relatório Diário PostgreSQL</title>
     <style>
       body {
         color: #1f2933;
@@ -56,26 +56,26 @@
     </style>
   </head>
   <body>
-    <h1>Daily PostgreSQL Report</h1>
-    <p>Report: {{ report.report_name }} | Collected at: {{ report.collected_at }}</p>
+    <h1>Relatório Diário PostgreSQL</h1>
+    <p>Relatório: {{ report.report_name }} | Coletado em: {{ report.collected_at }}</p>
 
     <section class="summary">
       {% for key, value in report.summary.items() %}
       <div class="metric">
-        <strong>{{ key.replace("_", " ") }}</strong>
+        <strong>{{ key | column_label }}</strong>
         <span>{{ value }}</span>
       </div>
       {% endfor %}
     </section>
 
     {% for dataset_name, rows in report.datasets.items() %}
-    <h2>{{ dataset_name.replace("_", " ").title() }}</h2>
+    <h2>{{ dataset_name | dataset_label }}</h2>
     {% if rows %}
     <table>
       <thead>
         <tr>
           {% for column in rows[0].keys() %}
-          <th>{{ column }}</th>
+          <th>{{ column | column_label }}</th>
           {% endfor %}
         </tr>
       </thead>
@@ -90,9 +90,8 @@
       </tbody>
     </table>
     {% else %}
-    <p>No rows returned.</p>
+    <p>Nenhuma linha retornada.</p>
     {% endif %}
     {% endfor %}
   </body>
 </html>
-
