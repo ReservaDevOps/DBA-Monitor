@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import psycopg
+
 from app.db import connection_info, fetch_all, fetch_one
 from app.reports.renderer import render_html, render_pdf
 from app.settings import settings
@@ -30,22 +32,6 @@ DATASET_QUERIES = {
         from pg_database
         where datallowconn
         order by pg_database_size(datname) desc
-    """,
-    "table_sizes": """
-        select
-          schemaname,
-          relname as table_name,
-          pg_total_relation_size((quote_ident(schemaname) || '.' || quote_ident(relname))::regclass) as total_bytes,
-          pg_size_pretty(pg_total_relation_size((quote_ident(schemaname) || '.' || quote_ident(relname))::regclass)) as total_size,
-          n_live_tup,
-          n_dead_tup,
-          last_vacuum,
-          last_autovacuum,
-          last_analyze,
-          last_autoanalyze
-        from pg_stat_user_tables
-        order by pg_total_relation_size((quote_ident(schemaname) || '.' || quote_ident(relname))::regclass) desc
-        limit 50
     """,
     "connections": """
         select
@@ -85,8 +71,39 @@ DATASET_QUERIES = {
         group by locktype, mode, granted
         order by granted, locks desc, locktype, mode
     """,
+}
+
+
+DATABASE_LIST_QUERY = """
+    select datname as database_name
+    from pg_database
+    where datallowconn
+      and not datistemplate
+    order by datname
+"""
+
+
+MULTI_DATABASE_DATASET_QUERIES = {
+    "table_sizes": """
+        select
+          current_database() as database_name,
+          schemaname,
+          relname as table_name,
+          pg_total_relation_size((quote_ident(schemaname) || '.' || quote_ident(relname))::regclass) as total_bytes,
+          pg_size_pretty(pg_total_relation_size((quote_ident(schemaname) || '.' || quote_ident(relname))::regclass)) as total_size,
+          n_live_tup,
+          n_dead_tup,
+          last_vacuum,
+          last_autovacuum,
+          last_analyze,
+          last_autoanalyze
+        from pg_stat_user_tables
+        order by pg_total_relation_size((quote_ident(schemaname) || '.' || quote_ident(relname))::regclass) desc
+        limit 50
+    """,
     "vacuum_health": """
         select
+          current_database() as database_name,
           schemaname,
           relname as table_name,
           n_live_tup,
@@ -177,6 +194,55 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
+def _collect_multi_database_datasets() -> dict[str, list[dict[str, Any]]]:
+    databases = [row["database_name"] for row in fetch_all(DATABASE_LIST_QUERY)]
+    datasets = {
+        "database_scan_status": [
+            {
+                "discovered_databases": len(databases),
+                "scanned_databases": 0,
+                "failed_databases": 0,
+            }
+        ],
+        "database_scan_errors": [],
+    }
+    for name in MULTI_DATABASE_DATASET_QUERIES:
+        datasets[name] = []
+
+    scanned_databases = 0
+    for database in databases:
+        try:
+            for name, sql in MULTI_DATABASE_DATASET_QUERIES.items():
+                datasets[name].extend(fetch_all(sql, database=database))
+            scanned_databases += 1
+        except psycopg.Error as exc:
+            datasets["database_scan_errors"].append(
+                {
+                    "database_name": database,
+                    "error_type": exc.__class__.__name__,
+                    "error": str(exc).splitlines()[0],
+                }
+            )
+
+    datasets["database_scan_status"][0]["scanned_databases"] = scanned_databases
+    datasets["database_scan_status"][0]["failed_databases"] = len(
+        datasets["database_scan_errors"]
+    )
+
+    datasets["table_sizes"] = sorted(
+        datasets["table_sizes"],
+        key=lambda row: row.get("total_bytes") or 0,
+        reverse=True,
+    )[:50]
+    datasets["vacuum_health"] = sorted(
+        datasets["vacuum_health"],
+        key=lambda row: row.get("n_dead_tup") or 0,
+        reverse=True,
+    )[:50]
+
+    return datasets
+
+
 def _pg_stat_statements_available() -> bool:
     row = fetch_one(
         """
@@ -230,6 +296,12 @@ def generate_daily_report(report_name: str | None = None) -> dict:
         _write_csv(csv_path, rows)
         csv_files[name] = str(csv_path)
 
+    for name, rows in _collect_multi_database_datasets().items():
+        datasets[name] = rows
+        csv_path = output_dir / f"{name}.csv"
+        _write_csv(csv_path, rows)
+        csv_files[name] = str(csv_path)
+
     for name, rows in _collect_pg_stat_statements().items():
         datasets[name] = rows
         csv_path = output_dir / f"{name}.csv"
@@ -251,6 +323,12 @@ def generate_daily_report(report_name: str | None = None) -> dict:
         "total_connections": connections,
         "long_queries": len(datasets["long_queries"]),
         "waiting_locks": waiting_locks,
+        "scanned_databases": datasets["database_scan_status"][0].get(
+            "scanned_databases", 0
+        ),
+        "failed_databases": datasets["database_scan_status"][0].get(
+            "failed_databases", 0
+        ),
         "largest_database": datasets["database_sizes"][0].get("database_name", "")
         if datasets["database_sizes"]
         else "",

@@ -19,8 +19,12 @@ def connection_info() -> dict[str, str]:
 
 
 @contextmanager
-def connect() -> Iterator[psycopg.Connection]:
-    with psycopg.connect(row_factory=dict_row) as conn:
+def connect(database: str | None = None) -> Iterator[psycopg.Connection]:
+    kwargs = {"row_factory": dict_row}
+    if database:
+        kwargs["dbname"] = database
+
+    with psycopg.connect(**kwargs) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "select set_config('statement_timeout', %s, true)",
@@ -29,13 +33,13 @@ def connect() -> Iterator[psycopg.Connection]:
         yield conn
 
 
-def fetch_all(sql: str, params: tuple | None = None) -> list[dict]:
-    with connect() as conn:
+def fetch_all(sql: str, params: tuple | None = None, database: str | None = None) -> list[dict]:
+    with connect(database=database) as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params or ())
             return list(cur.fetchall())
 
 
-def fetch_one(sql: str, params: tuple | None = None) -> dict | None:
-    rows = fetch_all(sql, params)
+def fetch_one(sql: str, params: tuple | None = None, database: str | None = None) -> dict | None:
+    rows = fetch_all(sql, params, database=database)
     return rows[0] if rows else None

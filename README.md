@@ -73,11 +73,13 @@ Datasets incluídos:
 
 - identificação da instância;
 - tamanhos de databases;
-- maiores tabelas;
+- maiores tabelas em todos os databases acessíveis;
 - conexões por usuário/aplicação/estado;
 - queries em execução há mais de 5 minutos;
 - locks;
-- saúde de vacuum/analyze;
+- saúde de vacuum/analyze em todos os databases acessíveis;
+- status da varredura multi-database, incluindo databases sem permissão de
+  conexão quando houver;
 - top SQLs por tempo total, tempo médio e I/O quando `pg_stat_statements`
   estiver habilitado no database monitorado.
 
