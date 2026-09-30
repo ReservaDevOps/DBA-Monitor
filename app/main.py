@@ -1,14 +1,14 @@
-from pathlib import Path
 from contextlib import asynccontextmanager
+import secrets
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 import uvicorn
 
 from app.scheduler import collect_and_store_status, start_scheduler, stop_scheduler
-from app.reports.daily import generate_daily_report
+from app.reports.daily import ReportAlreadyRunning, generate_daily_report
 from app.settings import settings
-from app.storage.filesystem import list_reports, load_latest_status
+from app.storage.filesystem import list_reports, load_latest_status, safe_report_file
 
 
 @asynccontextmanager
@@ -21,6 +21,23 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="DBA Monitor Agent", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def require_api_token(request: Request, call_next):
+    if settings.require_api_token and request.url.path != "/health":
+        if not settings.api_token:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "AGENT_API_TOKEN is required but not configured"},
+            )
+        token = request.headers.get("x-api-token", "")
+        if not secrets.compare_digest(token, settings.api_token):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or missing API token"},
+            )
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -51,7 +68,10 @@ def reports() -> list[dict[str, str]]:
 
 @app.post("/reports/run-now")
 def run_report_now() -> dict:
-    report = generate_daily_report()
+    try:
+        report = generate_daily_report()
+    except ReportAlreadyRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {
         "report_name": report["report_name"],
         "collected_at": report["collected_at"],
@@ -65,7 +85,10 @@ def run_report_now() -> dict:
 
 @app.get("/reports/{report_name}/{date_key}/html")
 def report_html(report_name: str, date_key: str) -> FileResponse:
-    path = Path(settings.reports_dir) / report_name / date_key / "summary.html"
+    try:
+        path = safe_report_file(report_name, date_key, "summary.html")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not path.exists():
         raise HTTPException(status_code=404, detail="Report HTML not found")
     return FileResponse(path, media_type="text/html")
@@ -73,7 +96,10 @@ def report_html(report_name: str, date_key: str) -> FileResponse:
 
 @app.get("/reports/{report_name}/{date_key}/pdf")
 def report_pdf(report_name: str, date_key: str) -> FileResponse:
-    path = Path(settings.reports_dir) / report_name / date_key / "summary.pdf"
+    try:
+        path = safe_report_file(report_name, date_key, "summary.pdf")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not path.exists():
         raise HTTPException(status_code=404, detail="Report PDF not found")
     return FileResponse(path, media_type="application/pdf", filename=path.name)

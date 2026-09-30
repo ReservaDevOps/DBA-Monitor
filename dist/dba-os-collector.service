@@ -1,0 +1,22 @@
+[Unit]
+Description=DBA Monitor local Linux OS collector
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dba-monitor
+Group=dba-monitor
+WorkingDirectory=/opt/dba-monitor
+EnvironmentFile=/etc/dba-monitor/os-collector.env
+Environment=PYTHONPATH=/opt/dba-monitor/os_collector
+ExecStart=/opt/dba-monitor/venv/bin/python -m dba_os_collector
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
