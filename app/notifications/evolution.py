@@ -102,9 +102,9 @@ def _has_evolution_settings() -> bool:
     return True
 
 
-def send_text_notification(text: str) -> None:
+def send_text_notification(text: str) -> bool:
     if not _has_evolution_settings():
-        return
+        return False
 
     _post_json(
         "sendText",
@@ -113,6 +113,7 @@ def send_text_notification(text: str) -> None:
             "text": text,
         },
     )
+    return True
 
 
 def notify_daily_report(report: dict[str, Any]) -> None:

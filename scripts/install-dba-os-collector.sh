@@ -11,6 +11,9 @@ SERVICE_GROUP="${DBA_MONITOR_SERVICE_GROUP:-dba-monitor}"
 ARCHIVE_URL="${BASE_URL%/}/os_collector.tar.gz"
 SERVICE_URL="${BASE_URL%/}/dba-os-collector.service"
 SCHEMA_URL="${BASE_URL%/}/os_metrics_schema.sql"
+ARCHIVE_SHA256="${DBA_MONITOR_ARCHIVE_SHA256:-444522360e9ba636ff20cbe013338caaa5cef1299530b730b4987b2d0f0c427b}"
+SERVICE_SHA256="${DBA_MONITOR_SERVICE_SHA256:-5ad671e2bbf36565efad94babcea8c0284997f26ab8abdc48101d46fab44ccb6}"
+SCHEMA_SHA256="${DBA_MONITOR_SCHEMA_SHA256:-278f641f05f9ac8bef465f04f86636a9b079a2ba769dfa8f9c1cabe903b9d0c2}"
 
 log() {
   printf '[dba-os-collector] %s\n' "$*"
@@ -29,6 +32,20 @@ require_root() {
 
 need_command() {
   command -v "$1" >/dev/null 2>&1 || die "comando obrigatorio nao encontrado: $1"
+}
+
+download_verified() {
+  local url="$1"
+  local expected_sha256="$2"
+  local destination="$3"
+  local actual_sha256
+
+  [[ "$expected_sha256" =~ ^[a-fA-F0-9]{64}$ ]] \
+    || die "checksum SHA-256 invalido para ${url}"
+  curl -fsSL "$url" -o "$destination"
+  actual_sha256="$(sha256sum "$destination" | awk '{print $1}')"
+  [ "$actual_sha256" = "$expected_sha256" ] \
+    || die "checksum SHA-256 nao confere para ${url}"
 }
 
 prompt_default() {
@@ -165,7 +182,7 @@ install_collector() {
 
   install -d -m 0755 "$INSTALL_DIR"
   log "baixando pacote do coletor"
-  curl -fsSL "$ARCHIVE_URL" -o "${tmp_dir}/os_collector.tar.gz"
+  download_verified "$ARCHIVE_URL" "$ARCHIVE_SHA256" "${tmp_dir}/os_collector.tar.gz"
   tar -xzf "${tmp_dir}/os_collector.tar.gz" -C "$INSTALL_DIR"
 
   log "criando virtualenv"
@@ -184,7 +201,7 @@ install_collector() {
 install_service() {
   local tmp_service
   tmp_service="$(mktemp)"
-  curl -fsSL "$SERVICE_URL" -o "$tmp_service"
+  download_verified "$SERVICE_URL" "$SERVICE_SHA256" "$tmp_service"
   install -m 0644 "$tmp_service" "$SERVICE_FILE"
   rm -f "$tmp_service"
   systemctl daemon-reload
@@ -194,7 +211,7 @@ apply_schema_and_grants() {
   local schema_file sql_file
   schema_file="$(mktemp)"
   sql_file="$(mktemp)"
-  curl -fsSL "$SCHEMA_URL" -o "$schema_file"
+  download_verified "$SCHEMA_URL" "$SCHEMA_SHA256" "$schema_file"
 
   cat "$schema_file" > "$sql_file"
   {
@@ -236,6 +253,7 @@ test_collector() {
 main() {
   require_root
   need_command curl
+  need_command sha256sum
   need_command tar
   need_command systemctl
 

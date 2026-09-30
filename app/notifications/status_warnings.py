@@ -244,9 +244,13 @@ def notify_status_warnings(snapshot: dict[str, Any]) -> None:
             return
 
     try:
-        send_text_notification(_message(snapshot, warnings))
+        sent = send_text_notification(_message(snapshot, warnings))
     except Exception as exc:
         logger.exception("Status warning notification failed: %s", exc)
+        return
+
+    if not sent:
+        logger.warning("Status warning notification was not sent; keeping it eligible")
         return
 
     save_status_warning_state(

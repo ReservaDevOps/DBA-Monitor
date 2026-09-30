@@ -15,10 +15,11 @@ from app.db import connection_info, fetch_all, fetch_one
 from app.notifications.evolution import notify_daily_report
 from app.reports.renderer import render_html, render_pdf
 from app.settings import settings
-from app.storage.filesystem import report_root
+from app.storage.filesystem import report_root, validate_report_component
 
 
-REPORT_LOCK = Lock()
+REPORT_LOCKS: dict[str, Lock] = {}
+REPORT_LOCKS_GUARD = Lock()
 
 
 class ReportAlreadyRunning(RuntimeError):
@@ -26,11 +27,15 @@ class ReportAlreadyRunning(RuntimeError):
 
 
 @contextmanager
-def report_generation_lock():
-    if not REPORT_LOCK.acquire(blocking=False):
+def report_generation_lock(report_name: str):
+    report_name = validate_report_component(report_name, "report_name")
+    with REPORT_LOCKS_GUARD:
+        report_lock = REPORT_LOCKS.setdefault(report_name, Lock())
+
+    if not report_lock.acquire(blocking=False):
         raise ReportAlreadyRunning("A report generation job is already running")
 
-    lock_file = Path(settings.reports_dir) / ".report-generation.lock"
+    lock_file = Path(settings.reports_dir) / f".report-generation-{report_name}.lock"
     try:
         lock_file.parent.mkdir(parents=True, exist_ok=True)
         with lock_file.open("w", encoding="utf-8") as file:
@@ -48,7 +53,7 @@ def report_generation_lock():
                 fcntl.flock(file.fileno(), fcntl.LOCK_UN)
                 lock_file.unlink(missing_ok=True)
     finally:
-        REPORT_LOCK.release()
+        report_lock.release()
 
 
 DATASET_QUERIES = {
@@ -535,7 +540,8 @@ def _collect_pg_stat_statements() -> dict[str, list[dict[str, Any]]]:
 
 
 def generate_daily_report(report_name: str | None = None) -> dict:
-    with report_generation_lock():
+    report_name = report_name or settings.report_name
+    with report_generation_lock(report_name):
         return _generate_daily_report(report_name)
 
 

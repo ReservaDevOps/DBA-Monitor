@@ -1,6 +1,6 @@
 services:
   dba-evolution-api:
-    image: evoapicloud/evolution-api:latest
+    image: evoapicloud/evolution-api:v2.3.7
     container_name: dba_monitor_evolution_api
     restart: unless-stopped
     depends_on:
@@ -16,7 +16,7 @@ services:
       - monitor-notifications
 
   dba-evolution-redis:
-    image: redis:latest
+    image: redis:7.4.2
     container_name: dba_monitor_evolution_redis
     restart: unless-stopped
     command: >
