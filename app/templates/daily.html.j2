@@ -53,6 +53,28 @@
         margin-bottom: 4px;
         text-transform: uppercase;
       }
+
+      .charts {
+        margin-bottom: 28px;
+      }
+
+      .chart {
+        border: 1px solid #d9e2ec;
+        margin-bottom: 16px;
+        padding: 10px 12px;
+      }
+
+      .chart h3 {
+        color: #102a43;
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+
+      .chart svg {
+        display: block;
+        height: auto;
+        max-width: 100%;
+      }
     </style>
   </head>
   <body>
@@ -67,6 +89,18 @@
       </div>
       {% endfor %}
     </section>
+
+    {% if report.charts %}
+    <section class="charts">
+      <h2>Histórico de Métricas de SO</h2>
+      {% for chart in report.charts %}
+      <div class="chart">
+        <h3>{{ chart.title }}</h3>
+        {{ chart | chart_svg }}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
 
     {% for dataset_name, rows in report.datasets.items() %}
     <h2>{{ dataset_name | dataset_label }}</h2>

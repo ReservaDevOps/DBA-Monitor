@@ -1,6 +1,27 @@
 from datetime import datetime, timezone
+import logging
 
+from app.collectors.os_metrics import collect_os_metrics
 from app.db import connection_info, fetch_all, fetch_one
+
+
+logger = logging.getLogger(__name__)
+
+
+def _optional_fetch_one(sql: str) -> dict | None:
+    try:
+        return fetch_one(sql)
+    except Exception as exc:
+        logger.warning("Optional status query failed: %s", exc)
+        return None
+
+
+def _optional_fetch_all(sql: str) -> list[dict]:
+    try:
+        return fetch_all(sql)
+    except Exception as exc:
+        logger.warning("Optional status query failed: %s", exc)
+        return []
 
 
 def collect_status() -> dict:
@@ -55,6 +76,33 @@ def collect_status() -> dict:
         """
     )
 
+    server_settings = _optional_fetch_one(
+        """
+        select
+          current_setting('max_connections')::int as max_connections
+        """
+    ) or {}
+
+    data_directory = _optional_fetch_one(
+        """
+        select current_setting('data_directory', true) as data_directory
+        """
+    )
+    if data_directory:
+        server_settings["data_directory"] = data_directory.get("data_directory")
+
+    tablespaces = _optional_fetch_all(
+        """
+        select
+          spcname,
+          pg_tablespace_location(oid) as location,
+          pg_tablespace_size(oid) as bytes,
+          pg_size_pretty(pg_tablespace_size(oid)) as pretty
+        from pg_tablespace
+        order by spcname
+        """
+    )
+
     database_size = fetch_one(
         """
         select
@@ -70,6 +118,8 @@ def collect_status() -> dict:
         "activity": activity,
         "long_queries": long_queries,
         "locks": locks,
+        "server_settings": server_settings,
+        "tablespaces": tablespaces,
         "database_size": database_size,
+        "os_metrics": collect_os_metrics(),
     }
-

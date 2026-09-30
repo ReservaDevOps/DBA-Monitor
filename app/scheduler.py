@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.collectors.status import collect_status
+from app.notifications.status_warnings import notify_status_warnings
 from app.reports.daily import generate_daily_report
 from app.settings import settings
 from app.storage.filesystem import save_status
@@ -12,6 +13,7 @@ scheduler = BackgroundScheduler(timezone="America/Sao_Paulo")
 def collect_and_store_status() -> dict:
     snapshot = collect_status()
     save_status(snapshot)
+    notify_status_warnings(snapshot)
     return snapshot
 
 
@@ -52,4 +54,3 @@ def start_scheduler() -> None:
 def stop_scheduler() -> None:
     if scheduler.running:
         scheduler.shutdown(wait=False)
-
